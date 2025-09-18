@@ -3,6 +3,7 @@ const express = require('express');
 const routes = require('./routes');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('../swagger');
+const logger = require('./utils/logger');
 
 // Initialize express app
 const app = express();
@@ -41,15 +42,25 @@ app.use('/docs', swaggerUi.serve, (req, res, next) => {
 // Parse JSON request body
 app.use(express.json());
 
+// Basic request logging (can be extended)
+app.use((req, res, next) => {
+  logger.info('request', { method: req.method, path: req.path });
+  next();
+});
+
 // Mount routes
 app.use('/', routes);
 
 // Error handling middleware
+// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    status: 'error',
-    message: 'Internal Server Error',
+  const status = err.status || 500;
+  logger.error('Unhandled error', { status, error: err.message, stack: process.env.NODE_ENV === 'production' ? undefined : err.stack });
+  res.status(status).json({
+    error: status === 500 ? 'ServerError' : 'Error',
+    message: err.message || 'Internal Server Error',
+    code: status,
+    details: err.details,
   });
 });
 
