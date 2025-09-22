@@ -1,4 +1,8 @@
-// This file will export middleware as the application grows
+const auth = require('./auth');
+const idempotency = require('./idempotency');
+
+// This file exports middleware modules for reuse across routes
 module.exports = {
-  // Add your middleware here
+  auth,
+  idempotency,
 };

@@ -1,3 +1,4 @@
+require('dotenv').config();
 const cors = require('cors');
 const express = require('express');
 const routes = require('./routes');
@@ -10,7 +11,7 @@ const app = express();
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key']
 }));
 app.set('trust proxy', true);
 app.use('/docs', swaggerUi.serve, (req, res, next) => {
@@ -45,12 +46,14 @@ app.use(express.json());
 app.use('/', routes);
 
 // Error handling middleware
+// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    status: 'error',
-    message: 'Internal Server Error',
-  });
+  // eslint-disable-next-line no-console
+  console.error(err.stack || err.message || err);
+  const status = err.status || err.code || 500;
+  const message = err.message || 'Internal Server Error';
+  const payload = err.payload || { status: 'error', message };
+  res.status(Number.isInteger(status) ? status : 500).json(payload);
 });
 
 module.exports = app;
