@@ -58,15 +58,49 @@ class BusinessService {
   // PUBLIC_INTERFACE
   async createInventoryItem(req, payload) {
     /** Create inventory item with validation and defaulting. */
+    // Validate required fields
     validators.nonEmptyString(payload.sku, 'sku');
     validators.nonEmptyString(payload.name, 'name');
     validators.nonNegativeNumber(Number(payload.price), 'price');
     validators.positiveInt(Number(payload.quantity), 'quantity');
     if (!Number.isInteger(Number(payload.category_id))) throw badRequest('category_id must be integer');
 
-    const url = `${config.dataServiceBaseUrl}/Inventory`;
+    // First validate if category exists
+    const catUrl = `${config.dataServiceBaseUrl}/entities/Category/${payload.category_id}`;
+    try {
+      await http.get(catUrl, { headers: downstreamHeaders(req) });
+    } catch (err) {
+      if (err.response?.status === 404) {
+        throw badRequest(`Invalid category_id: ${payload.category_id}`);
+      }
+      throw err;
+    }
+
+    // Create inventory item
+    const url = `${config.dataServiceBaseUrl}/entities/Inventory`;
     const res = await http.post(url, { headers: downstreamHeaders(req), body: payload });
-    return res.data?.data || res.data;
+    const item = res.data?.data || res.data;
+
+    // Notify relevant parties about new inventory
+    try {
+      await http.post(`${config.notificationServiceBaseUrl}/notifications/send`, {
+        headers: downstreamHeaders(req),
+        body: {
+          type: 'email',
+          recipients: [{ recipientId: 'inventory', type: 'admin', email: process.env.INVENTORY_ADMIN_EMAIL || 'admin@example.com' }],
+          templateId: 'inventory_created_v1',
+          parameters: {
+            itemName: payload.name,
+            sku: payload.sku,
+            quantity: String(payload.quantity)
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('Inventory notification failed:', e.message);
+    }
+
+    return item;
   }
 
   // PUBLIC_INTERFACE
@@ -178,9 +212,34 @@ class BusinessService {
   async createCustomer(req, payload) {
     /** Create customer with validation. */
     validators.nonEmptyString(payload.first_name, 'first_name');
-    validators.nonEmptyString(payload.last_name, 'last_name');
+    validators.nonEmptyString(payload.last_name, 'last_name'); 
     validators.isEmail(payload.email, 'email');
-    const url = `${config.dataServiceBaseUrl}/Customer`;
+    if (payload.phone) {
+      validators.nonEmptyString(payload.phone, 'phone');
+      // Basic phone format validation
+      if (!/^\+?[\d\s-()]+$/.test(payload.phone)) {
+        throw badRequest('Invalid phone number format');
+      }
+    }
+
+    // Check if customer with email already exists
+    try {
+      const customers = await http.get(`${config.dataServiceBaseUrl}/entities/Customer`, {
+        headers: downstreamHeaders(req),
+        body: { 
+          where: {
+            email: payload.email
+          }
+        }
+      });
+      if (customers.data?.data?.length > 0) {
+        throw badRequest('Customer with this email already exists');
+      }
+    } catch (err) {
+      if (err.code !== 'ValidationError') throw err;
+    }
+
+    const url = `${config.dataServiceBaseUrl}/entities/Customer`;
     const res = await http.post(url, { headers: downstreamHeaders(req), body: payload });
     // Welcome notification (best-effort)
     try {
@@ -209,20 +268,42 @@ class BusinessService {
 
   // PUBLIC_INTERFACE
   async createSupportTicket(req, payload) {
-    /** Create a support ticket with validation and auto-notify support team. */
-    const { customer_id, subject, description } = payload || {};
+    /** Create a support ticket with validation, customer verification and notifications */
+    const { customer_id, subject, description, priority = 'medium' } = payload || {};
     if (!Number.isInteger(Number(customer_id))) throw badRequest('customer_id must be integer');
     validators.nonEmptyString(subject, 'subject');
+
+    // Validate priority
+    if (!['low', 'medium', 'high', 'critical'].includes(priority)) {
+      throw badRequest('Invalid priority value');
+    }
+
+    // First verify customer exists
+    let customer;
+    try {
+      const customerRes = await http.get(`${config.dataServiceBaseUrl}/entities/Customer/${customer_id}`, {
+        headers: downstreamHeaders(req)
+      });
+      customer = customerRes.data?.data || customerRes.data;
+    } catch (err) {
+      if (err.response?.status === 404) {
+        throw badRequest(`Invalid customer_id: ${customer_id}`);
+      }
+      throw err;
+    }
 
     const body = {
       customer_id: Number(customer_id),
       subject,
       description: description || '',
       status: 'open',
+      priority,
       created_at: new Date().toISOString(),
     };
-    const url = `${config.dataServiceBaseUrl}/SupportTicket`;
+
+    const url = `${config.dataServiceBaseUrl}/entities/SupportTicket`;
     const res = await http.post(url, { headers: downstreamHeaders(req), body });
+    const ticket = res.data?.data || res.data;
 
     // Notify admins/support (best-effort)
     try {

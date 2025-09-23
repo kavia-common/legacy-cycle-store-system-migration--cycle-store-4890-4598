@@ -29,21 +29,48 @@ async function request(method, url, { headers = {}, body = undefined, timeout = 
     new Promise((resolve, reject) => {
       const req = lib.request(options, (res) => {
         const chunks = [];
-        res.on('data', (d) => chunks.push(d));
+        let size = 0;
+        
+        // Enforce max response size
+        const maxSize = process.env.HTTP_MAX_RESPONSE_SIZE_MB 
+          ? Number(process.env.HTTP_MAX_RESPONSE_SIZE_MB) * 1024 * 1024
+          : 10 * 1024 * 1024; // Default 10MB
+
+        res.on('data', (chunk) => {
+          chunks.push(chunk);
+          size += chunk.length;
+          if (size > maxSize) {
+            req.destroy(new Error('Response too large'));
+          }
+        });
+
         res.on('end', () => {
           const text = Buffer.concat(chunks).toString('utf8');
           let payload = text;
           try {
             payload = text ? JSON.parse(text) : null;
-          } catch {
+          } catch (e) {
+            console.warn(`Failed to parse response as JSON: ${e.message}`);
             // keep text
           }
-          const result = { status: res.statusCode, headers: res.headers, data: payload };
+          
+          const result = { 
+            status: res.statusCode,
+            statusText: res.statusMessage,
+            headers: res.headers,
+            data: payload
+          };
+
           if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve(result);
           } else {
-            const err = new Error(`HTTP ${res.statusCode}`);
+            const err = new Error(`HTTP ${res.statusCode} ${res.statusMessage}`);
             err.response = result;
+            err.status = res.statusCode;
+            if (payload && payload.error) {
+              err.code = payload.error.code;
+              err.message = payload.error.message || err.message;
+            }
             reject(err);
           }
         });
