@@ -2,14 +2,20 @@ const swaggerJSDoc = require('swagger-jsdoc');
 
 const options = {
   definition: {
-    openapi: '3.0.0',
+    openapi: '3.0.3',
     info: {
-      title: 'My Express API',
+      title: 'Business Logic REST API',
       version: '1.0.0',
-      description: 'A simple Express API documented with Swagger',
-    }
+      description: 'REST API for inventory, sales, customers, and support orchestration.',
+    },
+    tags: [
+      { name: 'Inventory', description: 'Inventory management endpoints' },
+      { name: 'Sales', description: 'Sales processing endpoints' },
+      { name: 'Customers', description: 'Customer management endpoints' },
+      { name: 'Support', description: 'Support ticket endpoints' },
+    ],
   },
-  apis: ['./src/routes/*.js'], // Path to the API docs
+  apis: ['./src/routes/*.js'],
 };
 
 const swaggerSpec = swaggerJSDoc(options);
