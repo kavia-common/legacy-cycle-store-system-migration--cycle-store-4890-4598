@@ -1,12 +1,9 @@
-# BusinessLogicService Environment
+Environment variables required by BusinessLogicService:
 
-Set these variables via .env (managed by orchestration). Do not commit secrets.
+- PORT=4002
+- DATA_SERVICE_URL=http://localhost:4010
+- NOTIFICATION_SERVICE_URL=http://localhost:4012
+- MONITORING_URL=http://localhost:4014
+- NODE_ENV=development
 
-- PORT: default 4001
-- HOST: default 0.0.0.0
-- DATA_SERVICE_BASE_URL: e.g. http://dataservice:3001/api/v1
-- NOTIFICATION_SERVICE_BASE_URL: e.g. http://notification:3003/api/v1
-- HTTP_TIMEOUT_MS: default 8000
-- HTTP_RETRIES: default 2
-- LOG_LEVEL: info|debug|warn|error
-- SUPPORT_INBOX: email address for support notifications
+Do not commit secrets. Use deployment platform to inject configuration.
